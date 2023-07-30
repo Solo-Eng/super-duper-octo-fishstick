@@ -5,16 +5,17 @@ using System.Linq;
 public class MyBot : IChessBot
 {
     // Piece values: null, pawn, knight, bishop, rook, queen, king
-    int[] pieceValues = { 0, 100, 350, 350, 600, 1100, 10000 };
+    int[] pieceValues = { 0, 100, 350, 350, 600, 900, 10000 };
     Random rng = new();
 
     public Move Think(Board board, Timer timer)
     {
         int score = getBoardEvaluation(board, true);
 
+
         Move[] moves = GetMoves(board);
         Move retMove = moves[0];
-
+        Console.WriteLine("----------------+"+score+"+----------------");
         foreach (Move move in moves)
         {
             board.MakeMove(move);
@@ -36,9 +37,11 @@ public class MyBot : IChessBot
                     }
                 }
             }
+            Console.WriteLine("TOP Start: " + move.StartSquare + "Target: " + move.TargetSquare);
             int newScore = getScore(board, timer, depth, false, -1000000);
             board.UndoMove(move);
-            if (newScore < score)
+            //if the min is equal to score, that means the max is greater :)
+            if (Math.Min(newScore, score) >= score)
             {
                 score = newScore;
                 retMove = move;
@@ -61,16 +64,21 @@ public class MyBot : IChessBot
             //we want to know if it is the player or the opponent's turn
             return getBoardEvaluation(board, playersTurn);
         }
+
+        Console.WriteLine("-------------------------" + depth + "------------------------");
         //otherwise, go another level deep
         //this means going through all of the children for this move/board state
         Move[] moves = GetMoves(board);
         //for each of the childeren, get the score
         foreach (Move move in moves)
         {
+            if (timer.MillisecondsElapsedThisTurn > 5000) return bestScore;
             //update the board state for the child 
             board.MakeMove(move);
             //score is whatever is gotten
+            Console.WriteLine("Start: " + move.StartSquare + "Target: " + move.TargetSquare);
             int score = getScore(board, timer, depth - 1, !playersTurn, -bestScore); //this is the child
+            Console.WriteLine("Score: " + score);
             //undo the child board state
             board.UndoMove(move);
             //check to see how the score measures up with the highest score
@@ -83,6 +91,7 @@ public class MyBot : IChessBot
                 //so if the score is greater than or equal to the best score 
                 //then they won't go down this path
                 //so if bestScore is less than or equal to score
+                Console.WriteLine(playersTurn + "" + bestScore + "" + score);
                 if (bestScore < score)
                 {
                     //purge the result and go to the next possible move
@@ -90,6 +99,7 @@ public class MyBot : IChessBot
                 }
                 //but if it's less, then the opponent will want to go down this path so...
                 //set the new best score to be this score
+                Console.WriteLine(playersTurn + "" + Math.Min(bestScore, score));
                 bestScore = Math.Min(score, bestScore);
             }
             //otherwise we want the lowest score possible
@@ -104,6 +114,7 @@ public class MyBot : IChessBot
                 }
                 //but if it is more, then they will
                 //set the new best score to be this score
+                Console.WriteLine(playersTurn + "" + Math.Min(bestScore, score));
                 bestScore = Math.Max(score, bestScore);
             }
         }
@@ -112,6 +123,12 @@ public class MyBot : IChessBot
     }
     int getBoardEvaluation(Board board, bool playersTurn)
     {
+        //check if the board is in checkmate
+        if (board.IsInCheckmate())
+        {
+            if (playersTurn) return -10000;
+            else return 10000;
+        }
         int score = 0;
 
         //get the score by evaluating the pieces on the board
