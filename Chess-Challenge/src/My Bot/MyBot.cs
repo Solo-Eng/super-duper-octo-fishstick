@@ -1,6 +1,7 @@
 ﻿using ChessChallenge.API;
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 public class MyBot : IChessBot
 {
@@ -11,16 +12,15 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         int score = getBoardEvaluation(board, true);
-
+        int depth = 4;
 
         Move[] moves = GetMoves(board);
         Move retMove = moves[0];
-        Console.WriteLine("----------------+"+score+"+----------------");
         foreach (Move move in moves)
         {
             board.MakeMove(move);
             int timeLeft = timer.MillisecondsRemaining;
-            int depth = 4;
+            depth = 4;
             if (timeLeft < 2000)
             {
                 depth--;
@@ -37,8 +37,7 @@ public class MyBot : IChessBot
                     }
                 }
             }
-            Console.WriteLine("TOP Start: " + move.StartSquare + "Target: " + move.TargetSquare);
-            int newScore = getScore(board, timer, depth, false, -1000000);
+            int newScore = getScore(board, timer, depth, true, int.MinValue, int.MaxValue);
             board.UndoMove(move);
             //if the min is equal to score, that means the max is greater :)
             if (Math.Min(newScore, score) >= score)
@@ -47,6 +46,13 @@ public class MyBot : IChessBot
                 retMove = move;
             }
         }
+        depth = 4;
+        //Console.WriteLine("=================================================================================");
+        board.MakeMove(retMove);
+        Console.WriteLine("Start: " + retMove.StartSquare + "Target: " + retMove.TargetSquare);
+        getScore(board, timer, depth, true, int.MinValue, int.MaxValue);
+        board.UndoMove(retMove);
+
         return retMove;
     }
 
@@ -55,79 +61,89 @@ public class MyBot : IChessBot
         return board.GetLegalMoves().OrderBy(x => rng.Next()).ToArray();
     }
 
-    int getScore(Board board, Timer timer, int depth, bool playersTurn, int bestScore)
+    //beta is trying to be the lowest it can be, alpha is trying to be the biggest it can be
+    //on minimizing, you try to get the lowest value, which means that you update beta
+    int getScore(Board board, Timer timer, int depth, bool IsMaximizing, int alpha, int beta)
     {
         //if the board is in a draw, checkmate, or the depth has run out
         if (board.IsInCheckmate() || board.IsDraw() || depth == 0)
         {
             //evaluate the score
             //we want to know if it is the player or the opponent's turn
-            return getBoardEvaluation(board, playersTurn);
+            return getBoardEvaluation(board, IsMaximizing);
         }
-
-        Console.WriteLine("-------------------------" + depth + "------------------------");
+        //Console.WriteLine("---------" + depth + "---------");
         //otherwise, go another level deep
         //this means going through all of the children for this move/board state
         Move[] moves = GetMoves(board);
         //for each of the childeren, get the score
         foreach (Move move in moves)
+        //for (int i = 0; i < 2; i++)
         {
-            if (timer.MillisecondsElapsedThisTurn > 5000) return bestScore;
+            //if (timer.MillisecondsElapsedThisTurn > 5000) return IsMaximizing ? alpha : beta ;
             //update the board state for the child 
             board.MakeMove(move);
+            //board.MakeMove(moves[i]);
+
+            //Console.WriteLine("Start: " + move.StartSquare  +   "Target: " + move.TargetSquare);
             //score is whatever is gotten
-            Console.WriteLine("Start: " + move.StartSquare + "Target: " + move.TargetSquare);
-            int score = getScore(board, timer, depth - 1, !playersTurn, -bestScore); //this is the child
-            Console.WriteLine("Score: " + score);
+            int score = getScore(board, timer, depth - 1, !IsMaximizing, alpha, beta); //this is the child
             //undo the child board state
             board.UndoMove(move);
+            //board.UndoMove(moves[i]);
             //check to see how the score measures up with the highest score
             //if its the players turn, we want a high score so
-            if (playersTurn)
+            /*for (int j = 0; j < depth; j++)
+            {
+                Console.Write("=");
+            }*/
+            if (IsMaximizing)
             {
                 //alpha beta pruning
-                //if it is the players turn, that means the previous player was the opponent
-                //they want the smallest score possible
-                //so if the score is greater than or equal to the best score 
-                //then they won't go down this path
-                //so if bestScore is less than or equal to score
-                Console.WriteLine(playersTurn + "" + bestScore + "" + score);
-                if (bestScore < score)
+                //if the this is maximizing, that means it wants to get the highest value possible, which means updating alpha
+                //if alpha is greater than beta, beta being the lowest value possible, which is the branch that the minimizing would choose
+                //then we can just return beta because any higher values found will not matter
+                if (score >= beta)
                 {
                     //purge the result and go to the next possible move
-                    return -bestScore;
+                    //Console.WriteLine(beta);
+                    return beta;
                 }
-                //but if it's less, then the opponent will want to go down this path so...
-                //set the new best score to be this score
-                Console.WriteLine(playersTurn + "" + Math.Min(bestScore, score));
-                bestScore = Math.Min(score, bestScore);
+                //otherwise, the alpha is not greater than the beta, which means that there is a possible new best branch
+                //so 
+                if (score > alpha) alpha = score;
             }
             //otherwise we want the lowest score possible
             else
             {
-                //if it is not the players turn, that means the previous player was
-                //so they won't go down this path unless the score is greater than whan they already have
-                //so if the score is less than the best score they won't go down this path
-                if (score < bestScore)
+                //alpha beta pruning
+                //if the this is minimizing, that means it wants to get the lowest value possible, which means updating beta
+                //if beta is less than alpha, we want to update beta to be a new low
+                if (score <= alpha)
                 {
-                    return -bestScore;
+                    //purge the result and go to the next possible move
+                    //Console.WriteLine(alpha);
+                    return alpha;
                 }
-                //but if it is more, then they will
-                //set the new best score to be this score
-                Console.WriteLine(playersTurn + "" + Math.Min(bestScore, score));
-                bestScore = Math.Max(score, bestScore);
+
+                if (score < beta) beta = score;
             }
         }
-        //now we want to return the bestScore for whoever's turn it is
-        return -bestScore;
+        //if maximizing, return highest score, if minimizing, return lowest score
+        //Console.WriteLine((IsMaximizing ? alpha : beta));
+        return IsMaximizing ? alpha : beta;
     }
-    int getBoardEvaluation(Board board, bool playersTurn)
+    int getBoardEvaluation(Board board, bool IsMaximizing)
     {
         //check if the board is in checkmate
         if (board.IsInCheckmate())
         {
-            if (playersTurn) return -10000;
-            else return 10000;
+            if (IsMaximizing) return int.MaxValue;
+            else return int.MinValue;
+        }
+        if (board.IsDraw())
+        {
+            return 0;
         }
         int score = 0;
 
@@ -145,7 +161,8 @@ public class MyBot : IChessBot
 
         //if it is the players turn we want the score to be positive
         //otherwise it is negative
-        return playersTurn ? score : -score;
+        //Console.WriteLine((IsMaximizing ? score : -score));
+        return IsMaximizing ? -score : score;
     }
 }
 
